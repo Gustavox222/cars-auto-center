@@ -1,0 +1,6 @@
+.taste-skill/
+shots/
+server.mjs
+3d/*.blend
+3d/*.blend1
+3d/render_hero.png
