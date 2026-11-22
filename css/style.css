@@ -123,7 +123,7 @@ fieldset { border: 0; padding: 0; min-width: 0; }
 .nav__toggle i:nth-of-type(2) { top: 27px; }
 .nav__toggle[aria-expanded="true"] i:nth-of-type(1) { top: 22px; transform: rotate(45deg); }
 .nav__toggle[aria-expanded="true"] i:nth-of-type(2) { top: 22px; transform: rotate(-45deg); }
-.menu { position: fixed; inset: var(--nav-h) 0 0; background: var(--bg); overflow-y: auto; }
+.menu { position: fixed; inset: var(--nav-h) 0 0; z-index: 99; background: var(--bg); overflow-y: auto; overscroll-behavior: contain; }
 .menu__in { display: flex; flex-direction: column; padding-top: 24px; padding-bottom: 40px; }
 .menu__in a:not(.btn) { padding: 16px 0; border-bottom: 1px solid var(--line); font-family: var(--f-display); font-weight: 800; font-size: 28px; text-decoration: none; }
 .menu__in .btn { margin-top: 28px; }

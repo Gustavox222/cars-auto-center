@@ -4,7 +4,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const D = window.CARS_DATA;
 const reduce = document.documentElement.classList.contains('reduce');
@@ -22,10 +21,14 @@ const PREFIX = {
   pneus: ['pneu_', 'roda_'], escape: ['escape_'], iluminacao: ['luz_']
 };
 const SHELL = ['carroceria', 'cabine', 'espelho', 'ma', 'grade', 'placa'];
+stage.dataset.three = 'on'; // o módulo rodou (main.js mostra a imagem se isso não acontecer)
 const SPIN = ['pneu_', 'roda_', 'freio_disco_'];
 const RED = new THREE.Color('#ff3326');
 
+let failed = false;
 function fallback(msg) {
+  if (failed) return;
+  failed = true;
   loading.hidden = true;
   canvas.hidden = true;
   document.querySelector('[data-fallback]').hidden = false;
@@ -52,30 +55,58 @@ function boot() {
 const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); boot(); } }, { rootMargin: '900px 0px' });
 io.observe(stage);
 
+// estúdio para os reflexos da pintura: faixas de luz no teto, painéis laterais e um recorte vermelho
+function studio() {
+  const s = new THREE.Scene();
+  const room = new THREE.Mesh(new THREE.BoxGeometry(40, 18, 40), new THREE.MeshBasicMaterial({ color: 0x0e0e11, side: THREE.BackSide }));
+  room.position.y = 8;
+  s.add(room);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ color: 0x1a1a1d }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.01;
+  s.add(floor);
+  const panel = (w, h, pos, look, k, hex = 0xffffff) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(...pos);
+    m.lookAt(...look);
+    s.add(m);
+  };
+  for (const z of [-1.6, 0, 1.6]) panel(9, 0.55, [0, 6.5, z], [0, 0, z], 5.0);     // faixas do teto
+  panel(10, 2.6, [0, 2.6, 7.5], [0, 1, 0], 2.2);                                    // painel lateral direito
+  panel(10, 2.6, [0, 2.6, -7.5], [0, 1, 0], 1.6);                                   // painel lateral esquerdo
+  panel(3.5, 2.2, [8, 2.2, 0], [0, 1, 0], 1.4);                                     // frente
+  panel(4, 3, [-7, 2.5, -4], [0, 1, 0], 3.0, 0xff3324);                             // recorte vermelho
+  panel(30, 0.25, [0, 1.15, 9.5], [0, 1.15, 0], 2.5);                               // linha do horizonte
+  return s;
+}
+
 function init() {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: coarse ? 'default' : 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.75 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   renderer.setClearColor(0x000000, 0);
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); fallback('O 3D foi pausado pelo aparelho. Escolha a área na lista.'); });
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.85;
+  scene.environment = pmrem.fromScene(studio(), 0.02).texture;
+  scene.environmentIntensity = 1.0;
+  pmrem.dispose();
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 80);
   const HOME = { pos: new THREE.Vector3(5.0, 1.95, 4.6), target: new THREE.Vector3(0, 0.5, 0) };
   camera.position.copy(HOME.pos);
 
-  const key = new THREE.DirectionalLight(0xffffff, 1.7);
+  const key = new THREE.DirectionalLight(0xffffff, 1.1);
   key.position.set(4, 6, 5);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff3a2a, 2.2);
+  const rim = new THREE.DirectionalLight(0xff3a2a, 1.6);
   rim.position.set(-5, 2.5, -4);
   scene.add(rim);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x221111, 0.35));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x221111, 0.2));
 
   // chão: sombra de contato + anel do elevador
   const sc = document.createElement('canvas');
@@ -87,10 +118,20 @@ function init() {
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 256, 256);
-  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 2.8), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false }));
+  const shadowMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false, opacity: 0.6 });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 2.8), shadowMat);
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.002;
   scene.add(shadow);
+  new THREE.TextureLoader().load('models/sombra.png', (t) => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), new THREE.MeshBasicMaterial({ color: 0x000000, map: t, transparent: true, depthWrite: false, opacity: 0.85 }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = 0.003;
+    scene.add(m);
+    shadowMat.opacity = 0.35;
+    kick();
+  });
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.95, 2.97, 128), new THREE.MeshBasicMaterial({ color: 0xff3326, transparent: true, opacity: 0.55 }));
   ring.rotation.x = -Math.PI / 2;
   scene.add(ring);
@@ -104,13 +145,14 @@ function init() {
   controls.dampingFactor = 0.08;
   controls.enablePan = false;
   controls.minDistance = 2.4;
-  controls.maxDistance = 11;
+  controls.maxDistance = 15;
   controls.maxPolarAngle = Math.PI * 0.53;
   controls.autoRotate = !reduce;
   controls.autoRotateSpeed = 0.55;
   controls.update();
-  // no celular: arrastar na horizontal gira, na vertical rola a página
-  canvas.style.touchAction = 'pan-y';
+  // no celular o gesto é do carro: arrastar gira, pinça aproxima (a página rola fora do quadro)
+  canvas.style.touchAction = 'none';
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
   const zoneMeshes = {};      // id -> [mesh]
   const shellMats = [];
@@ -161,6 +203,7 @@ function init() {
     start();
     if (pending) select(pending);
   }, undefined, (err) => { console.error(err); fallback(); });
+  setTimeout(() => { if (!car) fallback('O 3D demorou para carregar. Escolha a área na lista.'); }, 30000);
 
   /* ------------------------------------------------ pontos clicáveis (botões HTML) */
   const hot = {};
@@ -239,12 +282,12 @@ function init() {
       m.material.emissiveIntensity = m.userData.base.ei;
     });
   }
+  // quadro mais estreito que o do computador: afasta a câmera para o carro caber inteiro
+  const fit = () => Math.max(1, 1.32 / Math.max(camera.aspect, 0.5));
   function fly(view) {
-    const narrow = camera.aspect < 1.05;
     const pos = new THREE.Vector3().fromArray(view.pos);
     const tgt = new THREE.Vector3().fromArray(view.target);
-    if (!view.home) pos.sub(tgt).multiplyScalar(narrow ? 1.65 : 1.4).add(tgt);
-    else if (narrow) pos.sub(tgt).multiplyScalar(1.22).add(tgt);
+    pos.sub(tgt).multiplyScalar((view.home ? 1 : 1.4) * fit()).add(tgt);
     controls.autoRotate = false;
     if (gsap && !reduce) {
       gsap.to(camera.position, { x: pos.x, y: pos.y, z: pos.z, duration: 1.3, ease: 'power3.inOut', onUpdate: kick });
@@ -351,11 +394,7 @@ function init() {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    if (!active) {
-      const narrow = camera.aspect < 1.05;
-      const pos = HOME.pos.clone().sub(HOME.target).multiplyScalar(narrow ? 1.22 : 1).add(HOME.target);
-      if (!started2) camera.position.copy(pos);
-    }
+    if (!active && !started2) camera.position.copy(HOME.pos).sub(HOME.target).multiplyScalar(fit()).add(HOME.target);
     kick();
   }
   let started2 = false;
