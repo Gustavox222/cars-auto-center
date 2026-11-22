@@ -480,7 +480,8 @@ fieldset { border: 0; padding: 0; min-width: 0; }
   .hero__stage { margin: 8px calc(var(--gutter) * -1) 0; }
   .hero__title { font-size: clamp(40px, 7.4vw, 72px); }
   .diag__grid, .dash__grid, .contato__grid { grid-template-columns: 1fr; }
-  .diag__stage { min-height: 0; aspect-ratio: 4 / 3; }
+  /* altura explícita: Safari do iOS 16/17 ignora aspect-ratio em item de grid esticado sem conteúdo no fluxo (ficava com 0 px) */
+  .diag__stage { min-height: 0; height: min(calc((100vw - 2 * var(--gutter)) * .75), 640px); align-self: start; }
   .oficina__grid { grid-template-columns: 1fr; }
   .oficina__media { max-width: 640px; }
   .reviews__grid { grid-template-columns: 1fr; }
@@ -506,7 +507,7 @@ fieldset { border: 0; padding: 0; min-width: 0; }
   .hero__readout { left: var(--gutter); bottom: -4px; font-size: 12px; }
   .hero__readout b { min-width: 0; }
   .pin b { display: none; }
-  .diag__stage { aspect-ratio: 1 / .95; }
+  .diag__stage { height: calc((100vw - 2 * var(--gutter)) * .95); }
   .diag__tools { top: 10px; right: 10px; left: 10px; justify-content: flex-end; }
   .diag__panel { padding: 18px; }
   .zone { font-size: 13.5px; padding: 0 12px; }
