@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from '../vendor/meshopt_decoder.module.js';
 
 const D = window.CARS_DATA;
 const reduce = document.documentElement.classList.contains('reduce');
@@ -39,7 +40,7 @@ function fallback(msg) {
 function webglOK() {
   try {
     const c = document.createElement('canvas');
-    return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl')));
+    return !!(window.WebGL2RenderingContext && c.getContext('webgl2')); // o three.js atual exige WebGL 2
   } catch (e) { return false; }
 }
 
@@ -47,8 +48,8 @@ let started = false;
 function boot() {
   if (started) return;
   started = true;
-  if (!webglOK()) { fallback('Seu navegador não abriu o 3D. Escolha a área na lista.'); return; }
-  try { init(); } catch (e) { console.error(e); fallback(); }
+  if (!webglOK()) { fallback('Este aparelho não tem WebGL 2, então o 3D não abre aqui. Escolha a área na lista.'); return; }
+  try { init(); } catch (e) { console.error(e); fallback('O 3D não abriu neste aparelho (' + ((e && e.message) || 'erro') .slice(0, 60) + '). Escolha a área na lista.'); }
 }
 
 // carrega só quando a seção chega perto da tela
@@ -123,7 +124,7 @@ function init() {
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.002;
   scene.add(shadow);
-  new THREE.TextureLoader().load('models/sombra.png', (t) => {
+  new THREE.TextureLoader().load('models/sombra.png?v=20261122', (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), new THREE.MeshBasicMaterial({ color: 0x000000, map: t, transparent: true, depthWrite: false, opacity: 0.85 }));
     m.rotation.x = -Math.PI / 2;
@@ -173,7 +174,9 @@ function init() {
   }
 
   const loader = new GLTFLoader();
-  loader.load('models/carro.glb', (gltf) => {
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const loadText = loading.lastChild;
+  loader.load('models/carro.glb?v=20261122', (gltf) => {
     car = gltf.scene;
     car.traverse((o) => {
       if (!o.isMesh) return;
@@ -202,8 +205,9 @@ function init() {
     resize();
     start();
     if (pending) select(pending);
-  }, undefined, (err) => { console.error(err); fallback(); });
-  setTimeout(() => { if (!car) fallback('O 3D demorou para carregar. Escolha a área na lista.'); }, 30000);
+  }, (ev) => {
+    if (ev.total && loadText && loadText.nodeType === 3) loadText.nodeValue = 'Carregando o carro 3D… ' + Math.round((ev.loaded / ev.total) * 100) + '%';
+  }, (err) => { console.error(err); fallback('O modelo 3D não carregou (verifique a internet). Escolha a área na lista.'); });
 
   /* ------------------------------------------------ pontos clicáveis (botões HTML) */
   const hot = {};

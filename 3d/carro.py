@@ -12,7 +12,7 @@ lataria por raycast, com espessura, para encaixar na superfície.
 
 Uso:  blender -b --factory-startup -P 3d/carro.py            (tudo)
       blender -b --factory-startup -P 3d/carro.py -- glb     (só o GLB)
-Depois: npx @gltf-transform/cli quantize models/carro.glb models/carro.glb
+Depois: npx @gltf-transform/cli meshopt models/carro.glb models/carro.glb
         npx esbuild js/car3d.js --bundle --format=esm --minify --target=es2020 --tsconfig=3d/build.json --outfile=js/car3d.min.js
 """
 import bpy, bmesh, math, os, sys
@@ -140,7 +140,7 @@ def srgb(h):
     return tuple(((v + 0.055) / 1.055) ** 2.4 if v > 0.04045 else v / 12.92 for v in c)
 
 M = {
-    "paint":   mat("Pintura", srgb("#b3121b"), metal=0.55, rough=0.34, coat=1.0, coat_rough=0.03),
+    "paint":   mat("Pintura", srgb("#ecece8"), metal=0.12, rough=0.30, coat=1.0, coat_rough=0.03),
     "trim":    mat("Preto brilhante", srgb("#08080a"), rough=0.16, coat=0.6),
     "plastic": mat("Plastico", srgb("#141416"), rough=0.72),
     "glass":   mat("Vidro", srgb("#06080b"), rough=0.03, coat=1.0, coat_rough=0.0),

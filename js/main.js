@@ -326,22 +326,15 @@
   setInterval(status, 60000);
 
   /* ---------------------------------------------------------------- reserva do 3D
-     Se o módulo do carro nem chegou a rodar (navegador antigo, bloqueio), mostra a foto e a lista. */
-  var stage = $('[data-stage]');
-  if (stage && 'IntersectionObserver' in window) {
-    var watch = new IntersectionObserver(function (es) {
-      if (!es[0].isIntersecting) return;
-      watch.disconnect();
-      setTimeout(function () {
-        if (stage.dataset.three === 'on') return;
-        $('[data-loading]').hidden = true;
-        $('[data-canvas]').hidden = true;
-        $('[data-fallback]').hidden = false;
-        $('.diag__tools .tool').forEach(function (b) { b.disabled = true; });
-        var hint = $('[data-hint]');
-        if (hint) hint.textContent = 'Escolha a área na lista abaixo.';
-      }, 8000);
-    });
-    watch.observe(stage);
-  }
+     Chamada pelo onerror do script do carro ou por navegadores sem módulos: mostra a foto e a lista. */
+  window.__car3dFail = function (msg) {
+    var stage = $('[data-stage]');
+    if (!stage || stage.dataset.three === 'on') return;
+    $('[data-loading]').hidden = true;
+    $('[data-canvas]').hidden = true;
+    $('[data-fallback]').hidden = false;
+    $$('.diag__tools .tool').forEach(function (b) { b.disabled = true; });
+    var hint = $('[data-hint]');
+    if (hint) hint.textContent = msg || 'O 3D não abriu neste navegador. Escolha a área na lista.';
+  };
 })();
