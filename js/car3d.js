@@ -26,8 +26,28 @@ stage.dataset.three = 'on'; // o módulo rodou (main.js mostra a imagem se isso 
 const SPIN = ['pneu_', 'roda_', 'freio_disco_'];
 const RED = new THREE.Color('#ff3326');
 
+// ?debug no endereço: painel com o que o 3D está fazendo (para diagnosticar em celular)
+const DEBUG = /[?&]debug/.test(location.search);
+const dbgBox = DEBUG ? Object.assign(document.createElement('pre'), { style: 'position:absolute;left:8px;right:8px;bottom:36px;max-height:60%;overflow:auto;margin:0;padding:8px;font:11px/1.35 monospace;color:#0f0;background:rgba(0,0,0,.82);z-index:9;white-space:pre-wrap;pointer-events:none' }) : null;
+if (dbgBox) stage.appendChild(dbgBox);
+function dbg(...a) {
+  if (!dbgBox) return;
+  dbgBox.textContent += a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ') + '\n';
+}
+if (DEBUG) {
+  dbg('ua', navigator.userAgent);
+  dbg('dpr', devicePixelRatio, 'stage', stage.clientWidth + 'x' + stage.clientHeight);
+  window.addEventListener('error', (e) => dbg('ERRO', e.message, e.filename + ':' + e.lineno));
+  window.addEventListener('unhandledrejection', (e) => dbg('PROMISE', e.reason));
+  const ce = console.error.bind(console);
+  console.error = (...a) => { dbg('console.error', ...a); ce(...a); };
+  const cw = console.warn.bind(console);
+  console.warn = (...a) => { dbg('console.warn', ...a); cw(...a); };
+}
+
 let failed = false;
 function fallback(msg) {
+  dbg('fallback', msg);
   if (failed) return;
   failed = true;
   loading.hidden = true;
@@ -48,7 +68,8 @@ let started = false;
 function boot() {
   if (started) return;
   started = true;
-  if (!webglOK()) { fallback('Este aparelho não tem WebGL 2, então o 3D não abre aqui. Escolha a área na lista.'); return; }
+  dbg('boot, webgl2', webglOK());
+  if (!webglOK()) { fallback('Este navegador está com o WebGL desligado (no iPhone, o Modo de Isolamento faz isso), então o 3D não abre. Escolha a área na lista.'); return; }
   try { init(); } catch (e) { console.error(e); fallback('O 3D não abriu neste aparelho (' + ((e && e.message) || 'erro') .slice(0, 60) + '). Escolha a área na lista.'); }
 }
 
@@ -83,13 +104,20 @@ function studio() {
 
 function init() {
   const coarse = window.matchMedia('(pointer: coarse)').matches;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: coarse ? 'default' : 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.75 : 2));
+  // celular: tela densa dispensa antisserrilhado e resolução cheia (economiza memória, que o iOS cobra caro)
+  const dense = coarse && (window.devicePixelRatio || 1) >= 2;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !dense, alpha: true, powerPreference: coarse ? 'default' : 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.setClearColor(0x000000, 0);
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); fallback('O 3D foi pausado pelo aparelho. Escolha a área na lista.'); });
+  if (DEBUG) {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    dbg('gl', ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER), 'half-float rt', !!gl.getExtension('EXT_color_buffer_half_float'), 'float rt', !!gl.getExtension('EXT_color_buffer_float'));
+  }
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); fallback('O iPhone/celular pausou o 3D por falta de memória. Recarregue a página ou escolha a área na lista.'); });
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -124,7 +152,7 @@ function init() {
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.002;
   scene.add(shadow);
-  new THREE.TextureLoader().load('models/sombra.png?v=20261122', (t) => {
+  new THREE.TextureLoader().load('models/sombra.png?v=20261122b', (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 3), new THREE.MeshBasicMaterial({ color: 0x000000, map: t, transparent: true, depthWrite: false, opacity: 0.85 }));
     m.rotation.x = -Math.PI / 2;
@@ -176,7 +204,7 @@ function init() {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   const loadText = loading.lastChild;
-  loader.load('models/carro.glb?v=20261122', (gltf) => {
+  loader.load('models/carro.glb?v=20261122b', (gltf) => {
     car = gltf.scene;
     car.traverse((o) => {
       if (!o.isMesh) return;
@@ -200,13 +228,16 @@ function init() {
       D.zones.forEach((z) => { if (o.name === z.anchor) anchors[z.id] = o; });
     });
     scene.add(car);
+    dbg('carro na cena, malhas', pickables.length, 'canvas', canvas.width + 'x' + canvas.height);
     loading.hidden = true;
     buildHotspots();
     resize();
     start();
     if (pending) select(pending);
   }, (ev) => {
-    if (ev.total && loadText && loadText.nodeType === 3) loadText.nodeValue = 'Carregando o carro 3D… ' + Math.round((ev.loaded / ev.total) * 100) + '%';
+    if (DEBUG && ev.total && ev.loaded === ev.total) dbg('glb baixado', ev.total);
+    // o servidor manda comprimido: o total pode ser menor que o baixado, então só mostra enquanto faz sentido
+    if (ev.total && ev.loaded <= ev.total && loadText && loadText.nodeType === 3) loadText.nodeValue = 'Carregando o carro 3D… ' + Math.min(99, Math.round((ev.loaded / ev.total) * 100)) + '%';
   }, (err) => { console.error(err); fallback('O modelo 3D não carregou (verifique a internet). Escolha a área na lista.'); });
 
   /* ------------------------------------------------ pontos clicáveis (botões HTML) */
@@ -405,6 +436,7 @@ function init() {
   new ResizeObserver(resize).observe(stage);
 
   let visible = true;
+  let frames = 0;
   let idle = 0;
   let raf = 0;
   const clock = new THREE.Clock();
@@ -418,6 +450,7 @@ function init() {
     if (spinning && !reduce) spinners.forEach((o) => { o.rotation.z -= dt * 3.2; });
     controls.update();
     renderer.render(scene, camera);
+    if (DEBUG && ++frames % 60 === 1) dbg('quadro', frames, 'calls', renderer.info.render.calls, 'tris', renderer.info.render.triangles);
     placeHotspots();
     idle++;
     const busy = controls.autoRotate || spinning || pulse || idle < 90;
